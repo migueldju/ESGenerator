@@ -1,5 +1,8 @@
-from flask import Flask, render_template, request, jsonify, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, session, send_from_directory, redirect, url_for
 from flask_cors import CORS
+from flask_bcrypt import Bcrypt
+from flask_mail import Mail, Message
+from datetime import datetime, timedelta
 import os
 import json
 import re
@@ -7,28 +10,388 @@ import warnings
 import faiss
 import pickle
 import markdown
+import uuid
+import jwt
+from functools import wraps
 from langchain.chains import RetrievalQA
 from sentence_transformers import CrossEncoder
 from openai import OpenAI
 from langchain_core.runnables import Runnable
 
+# Import the db instance and models from models.py
+from models import db, User, Conversation, Answer, Document
+
+# Initialize Flask app
 app = Flask(__name__, static_folder='./build', template_folder='./build')
-app.secret_key = 'esrs_generator_secret_key'
+app.config['SECRET_KEY'] = 'esrs_generator_secret_key'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///esrs_db.sqlite'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Email configuration
+app.config['MAIL_SERVER'] = 'smtp.example.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your-email@example.com'
+app.config['MAIL_PASSWORD'] = 'your-email-password'
+app.config['MAIL_DEFAULT_SENDER'] = 'your-email@example.com'
+
+# JWT configuration
+app.config['JWT_SECRET_KEY'] = 'esrs_jwt_secret_key'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+
+# Initialize extensions
+db.init_app(app)  # Initialize db with app
+bcrypt = Bcrypt(app)
+mail = Mail(app)
+
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:5173"}})
 
-app.config['SESSION_COOKIE_SAMESITE'] = 'None' 
-app.config['SESSION_COOKIE_SECURE'] = True
+# Explicitly set session cookie parameters
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Or 'None' with secure=True
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 
+# Create database tables
+with app.app_context():
+    db.create_all()
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    if path != "" and os.path.exists(app.static_folder + '/' + path):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.template_folder, 'index.html')
+# Helper functions for sending emails
+def send_verification_email(user):
+    token = str(uuid.uuid4())
+    user.verification_token = token
+    db.session.commit()
+    
+    verification_url = f"http://localhost:5173/verify/{token}"
+    
+    msg = Message(
+        subject="ESGenerator - Verify Your Email",
+        recipients=[user.email],
+        html=f"""
+        <h1>Welcome to ESGenerator!</h1>
+        <p>Please verify your email by clicking the link below:</p>
+        <p><a href="{verification_url}">Verify Email</a></p>
+        <p>If you didn't register for an account, please ignore this email.</p>
+        """
+    )
+    mail.send(msg)
 
+def send_password_reset_email(user):
+    token = str(uuid.uuid4())
+    user.reset_token = token
+    user.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+    db.session.commit()
+    
+    reset_url = f"http://localhost:5173/reset-password/{token}"
+    
+    msg = Message(
+        subject="ESGenerator - Reset Your Password",
+        recipients=[user.email],
+        html=f"""
+        <h1>Password Reset Request</h1>
+        <p>Click the link below to reset your password:</p>
+        <p><a href="{reset_url}">Reset Password</a></p>
+        <p>This link will expire in 1 hour.</p>
+        <p>If you didn't request a password reset, please ignore this email.</p>
+        """
+    )
+    mail.send(msg)
+
+# Middleware to verify JWT token
+def token_required(f):
+    @wraps(f)  # This preserves the original function name and metadata
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        
+        if not token or not token.startswith('Bearer '):
+            return jsonify({"error": "Missing or invalid token"}), 401
+        
+        token = token.split('Bearer ')[1]
+        
+        try:
+            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+            current_user = User.query.get(data['user_id'])
+        except:
+            return jsonify({"error": "Invalid or expired token"}), 401
+            
+        return f(current_user, *args, **kwargs)
+    
+    return decorated
+
+# Authentication routes
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not username or not email or not password:
+        return jsonify({"error": "All fields are required"}), 400
+    
+    existing_user = User.query.filter((User.username == username) | (User.email == email)).first()
+    if existing_user:
+        return jsonify({"error": "Username or email already exists"}), 409
+    
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    
+    new_user = User(
+        username=username,
+        email=email,
+        password=hashed_password
+    )
+    
+    db.session.add(new_user)
+    db.session.commit()
+    
+    try:
+        send_verification_email(new_user)
+        return jsonify({"message": "Registration successful. Please check your email to verify your account."}), 201
+    except Exception as e:
+        return jsonify({"error": f"Failed to send verification email: {str(e)}"}), 500
+
+@app.route('/api/verify/<token>', methods=['GET'])
+def verify_email(token):
+    user = User.query.filter_by(verification_token=token).first()
+    
+    if not user:
+        return jsonify({"error": "Invalid verification token"}), 400
+    
+    user.is_verified = True
+    user.verification_token = None
+    db.session.commit()
+    
+    return redirect('http://localhost:5173/login?verified=true')
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    
+    email = data.get('email')
+    password = data.get('password')
+    
+    user = User.query.filter_by(email=email).first()
+    
+    if not user or not bcrypt.check_password_hash(user.password, password):
+        return jsonify({"error": "Invalid email or password"}), 401
+    
+    if not user.is_verified:
+        return jsonify({"error": "Please verify your email before logging in"}), 401
+    
+    # Generate JWT token
+    access_token = jwt.encode(
+        {
+            'user_id': user.id,
+            'username': user.username,
+            'exp': datetime.utcnow() + timedelta(hours=1)
+        },
+        app.config['JWT_SECRET_KEY']
+    )
+    
+    return jsonify({
+        "token": access_token,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email
+        }
+    }), 200
+
+@app.route('/api/forgot-password', methods=['POST'])
+def forgot_password():
+    data = request.get_json()
+    email = data.get('email')
+    
+    user = User.query.filter_by(email=email).first()
+    
+    if not user:
+        # For security reasons, don't reveal that the email doesn't exist
+        return jsonify({"message": "If your email exists in our system, you will receive a password reset link"}), 200
+    
+    try:
+        send_password_reset_email(user)
+        return jsonify({"message": "Reset link sent to your email"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to send reset email: {str(e)}"}), 500
+
+@app.route('/api/reset-password/<token>', methods=['POST'])
+def reset_password(token):
+    data = request.get_json()
+    new_password = data.get('password')
+    
+    if not new_password:
+        return jsonify({"error": "Password is required"}), 400
+    
+    user = User.query.filter_by(reset_token=token).first()
+    
+    if not user or user.reset_token_expiry < datetime.utcnow():
+        return jsonify({"error": "Invalid or expired token"}), 400
+    
+    user.password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+    user.reset_token = None
+    user.reset_token_expiry = None
+    db.session.commit()
+    
+    return jsonify({"message": "Password reset successful"}), 200
+
+# Conversation routes
+@app.route('/api/conversations', methods=['GET'])
+@token_required
+def get_conversations(current_user):
+    conversations = Conversation.query.filter_by(user_id=current_user.id).order_by(Conversation.updated_at.desc()).all()
+    
+    conversations_list = []
+    for conv in conversations:
+        conversations_list.append({
+            'id': conv.id,
+            'title': conv.title,
+            'nace_sector': conv.nace_sector,
+            'esrs_sector': conv.esrs_sector,
+            'created_at': conv.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': conv.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    
+    return jsonify({"conversations": conversations_list}), 200
+
+@app.route('/api/conversations/<int:conversation_id>', methods=['GET'])
+@token_required
+def get_conversation(current_user, conversation_id):
+    conversation = Conversation.query.filter_by(id=conversation_id, user_id=current_user.id).first()
+    
+    if not conversation:
+        return jsonify({"error": "Conversation not found"}), 404
+    
+    answers = Answer.query.filter_by(conversation_id=conversation_id).order_by(Answer.created_at).all()
+    
+    answers_list = []
+    for answer in answers:
+        answers_list.append({
+            'id': answer.id,
+            'question': answer.question,
+            'answer': answer.answer,
+            'created_at': answer.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    
+    return jsonify({
+        "conversation": {
+            'id': conversation.id,
+            'title': conversation.title,
+            'nace_sector': conversation.nace_sector,
+            'esrs_sector': conversation.esrs_sector,
+            'company_description': conversation.company_description,
+            'created_at': conversation.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': conversation.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        },
+        "answers": answers_list
+    }), 200
+
+# Document routes
+@app.route('/api/documents', methods=['GET'])
+@token_required
+def get_documents(current_user):
+    documents = Document.query.filter_by(user_id=current_user.id).order_by(Document.updated_at.desc()).all()
+    
+    documents_list = []
+    for doc in documents:
+        documents_list.append({
+            'id': doc.id,
+            'name': doc.name,
+            'created_at': doc.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': doc.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    
+    return jsonify({"documents": documents_list}), 200
+
+@app.route('/api/documents/<int:document_id>', methods=['GET'])
+@token_required
+def get_document(current_user, document_id):
+    document = Document.query.filter_by(id=document_id, user_id=current_user.id).first()
+    
+    if not document:
+        return jsonify({"error": "Document not found"}), 404
+    
+    return jsonify({
+        "document": {
+            'id': document.id,
+            'name': document.name,
+            'content': document.content,
+            'created_at': document.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': document.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    }), 200
+
+@app.route('/api/documents', methods=['POST'])
+@token_required
+def create_document(current_user):
+    data = request.get_json()
+    
+    name = data.get('name')
+    content = data.get('content')
+    
+    if not name or not content:
+        return jsonify({"error": "Name and content are required"}), 400
+    
+    document = Document(
+        user_id=current_user.id,
+        name=name,
+        content=content
+    )
+    
+    db.session.add(document)
+    db.session.commit()
+    
+    return jsonify({
+        "message": "Document created successfully",
+        "document": {
+            'id': document.id,
+            'name': document.name,
+            'created_at': document.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': document.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    }), 201
+
+@app.route('/api/documents/<int:document_id>', methods=['PUT'])
+@token_required
+def update_document(current_user, document_id):
+    document = Document.query.filter_by(id=document_id, user_id=current_user.id).first()
+    
+    if not document:
+        return jsonify({"error": "Document not found"}), 404
+    
+    data = request.get_json()
+    
+    if 'name' in data:
+        document.name = data['name']
+    
+    if 'content' in data:
+        document.content = data['content']
+    
+    db.session.commit()
+    
+    return jsonify({
+        "message": "Document updated successfully",
+        "document": {
+            'id': document.id,
+            'name': document.name,
+            'created_at': document.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': document.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    }), 200
+
+@app.route('/api/documents/<int:document_id>', methods=['DELETE'])
+@token_required
+def delete_document(current_user, document_id):
+    document = Document.query.filter_by(id=document_id, user_id=current_user.id).first()
+    
+    if not document:
+        return jsonify({"error": "Document not found"}), 404
+    
+    db.session.delete(document)
+    db.session.commit()
+    
+    return jsonify({"message": "Document deleted successfully"}), 200
+
+# Existing code for LLM and vectorstore handling
 warnings.filterwarnings("ignore")
 
 client = OpenAI(
@@ -79,7 +442,6 @@ def load_chain(vectorstore):
         return_source_documents=True
     )
 
-
 nace_vs = load_vectorstore("nace_db")
 default_vs = load_vectorstore("default_db")
 
@@ -113,59 +475,138 @@ with open("sector_classification.json", "r", encoding="utf-8") as f:
 
 nace_chain = load_chain(nace_vs)
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    user_message = request.form['message']
-    print("Session:", session)
+# Modified chat endpoint to support user sessions and conversation history
+@app.route('/api/chat', methods=['POST'])
+@token_required
+def chat(current_user):
+    data = request.get_json()
+    user_message = data.get('message')
+    conversation_id = data.get('conversation_id')
     
-    if 'initialized' not in session:
+    if conversation_id:
+        # Existing conversation
+        conversation = Conversation.query.filter_by(id=conversation_id, user_id=current_user.id).first()
+        
+        if not conversation:
+            return jsonify({"error": "Conversation not found"}), 404
+        
+        company_desc = conversation.company_description
+        nace_sector = conversation.nace_sector
+        esrs_sector = conversation.esrs_sector
+        
+        # Get conversation history
+        answers = Answer.query.filter_by(conversation_id=conversation_id).order_by(Answer.created_at).all()
+        conversation_history = []
+        
+        for answer in answers:
+            conversation_history.append(f"Q: {answer.question}")
+            conversation_history.append(f"A: {answer.answer}")
+        
+        # Process the question
+        qa_vs = default_vs
+        
+        if esrs_sector in sector_db_map:
+            merged_data = merged_vectorstores.get(esrs_sector)
+            
+            if merged_data:
+                qa_vs = merged_data['vectorstore']
+        
+        retrieved_docs = qa_vs.similarity_search(user_message, k=10)
+        
+        ranked_docs = sorted(
+            retrieved_docs,
+            key=lambda doc: reranker.predict([(user_message, doc.page_content)]),
+            reverse=True
+        )[:5]
+        
+        context = "\n".join([doc.page_content for doc in ranked_docs])
+        
+        contextual_query = f"""
+        Instructions:
+        - Follow the ESRS standards.
+        - Use the context provided for reference.
+        - No need to include summary tables
+        - Answer must be complete and accurate
+        - Give brief and concise answers
+        - Prioritize information quality over aesthetics
+        - Don't show tables, only plain text
+        - Don't say what was provided in context
+        - Give answer in markdown format
+        - Don't include numeric lists, only bullet points
+        Question: {user_message}
+        Context:
+        {context}
+        Take into account the previous conversation:
+        {conversation_history}
+        """
+        
+        answer_text = get_llm_response(contextual_query)
+        answer_html = markdown.markdown(answer_text, extensions=['tables', 'md_in_html'])
+        
+        # Store the question and answer in the database
+        answer = Answer(
+            conversation_id=conversation_id,
+            question=user_message,
+            answer=answer_html
+        )
+        
+        db.session.add(answer)
+        db.session.commit()
+        
+        # Update conversation timestamp
+        conversation.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            'answer': answer_html,
+            'context': context,
+            'is_first_message': False
+        }), 200
+    else:
+        # New conversation
         company_desc = user_message
         result = process_company_description(company_desc)
         
-        session['initialized'] = True
-        session['company_desc'] = company_desc
-        session['nace_sector'] = result['nace_sector']
-        session['esrs_sector'] = result['esrs_sector']
-        session['conversation_history'] = [
-            f"Company description: {company_desc}",
-            f"ESRS standards to follow: {'Agnostic Standards' if result['esrs_sector'] == 'Agnostic' else f'Agnostic Standards + {result['esrs_sector']}'}"
-        ]
+        # Generate title using LLM
+        title_prompt = f"""
+        Generate a short title (max 6 words) for a conversation about ESRS reporting requirements based on this company description:
+        {company_desc}
+        Just return the title without any quotation marks or additional text.
+        """
+        conversation_title = get_llm_response(title_prompt)
         
-        session.modified = True
+        # Create new conversation
+        conversation = Conversation(
+            user_id=current_user.id,
+            nace_sector=result['nace_sector'],
+            title=conversation_title,
+            esrs_sector=result['esrs_sector'],
+            company_description=company_desc
+        )
+        
+        db.session.add(conversation)
+        db.session.commit()
+        
+        welcome_answer = f"Thank you for your company description. Based on my analysis, your company falls under NACE sector {result['nace_sector']}. How can I help you with your ESRS reporting requirements?"
+        
+        # Create initial answer
+        answer = Answer(
+            conversation_id=conversation.id,
+            question=company_desc,
+            answer=welcome_answer
+        )
+        
+        db.session.add(answer)
+        db.session.commit()
         
         return jsonify({
-            'answer': f"Thank you for your company description. Based on my analysis, your company falls under NACE sector {result['nace_sector']}. How can I help you with your ESRS reporting requirements?",
+            'answer': welcome_answer,
             'context': '',
             'is_first_message': True,
+            'conversation_id': conversation.id,
             'nace_sector': result['nace_sector'],
             'esrs_sector': result['esrs_sector']
-        })
-    else:
-        response = process_question(user_message)
-        session.modified = True
-        return response
-    
-@app.route('/check_session', methods=['GET'])
-def check_session():
-    if 'initialized' in session:
-        return jsonify({
-            'initialized': True,
-            'nace_sector': session.get('nace_sector', ''),
-            'esrs_sector': session.get('esrs_sector', '')
-        })
-    return jsonify({'initialized': False})
-
-@app.route('/save_content', methods=['POST'])
-def save_content():
-    content = request.form.get('content', '')
-    # Here you would save the content to a database or file
-    # For now, we'll just return success
-    return jsonify({'status': 'success', 'message': 'Content saved successfully'})
-
-@app.route('/reset', methods=['POST'])
-def reset_session():
-    session.clear()
-    return jsonify({'status': 'success'})
+        }), 200
 
 def process_company_description(company_desc):
     retrieved_docs = nace_vs.similarity_search(company_desc, k=3)
@@ -216,61 +657,19 @@ def process_company_description(company_desc):
         'esrs_sector': esrs_sector
     }
 
-def process_question(question):
-    company_desc = session.get('company_desc', '')
-    nace_sector = session.get('nace_sector', 'agnostic')
-    esrs_sector = session.get('esrs_sector', 'Agnostic')
-    conversation_history = session.get('conversation_history', [])
-    
-    qa_vs = default_vs
-    
-    if esrs_sector in sector_db_map:
-        merged_data = merged_vectorstores.get(esrs_sector)
-        
-        if merged_data:
-            qa_vs = merged_data['vectorstore']
-    
-    retrieved_docs = qa_vs.similarity_search(question, k=10)
-    
-    ranked_docs = sorted(
-        retrieved_docs,
-        key=lambda doc: reranker.predict([(question, doc.page_content)]),
-        reverse=True
-    )[:5]
-    
-    context = "\n".join([doc.page_content for doc in ranked_docs])
-    
-    contextual_query = f"""
-    Instructions:
-    - Follow the ESRS standards.
-    - Use the context provided for reference.
-    - No need to include summary tables
-    - Answer must be complete and accurate
-    - Give brief and concise answers
-    - Prioritize information quality over aesthetics
-    - Don't show tables, only plain text
-    - Don't say what was provided in context
-    - Give answer in markdown format
-    - Don't include numeric lists, only bullet points
-    Question: {question}
-    Context:
-    {context}
-    Take into account the previous conversation:
-    {conversation_history}
-    """
-    
-    answer = get_llm_response(contextual_query)
-    answer = markdown.markdown(answer, extensions=['tables', 'md_in_html'])
-    
-    conversation_history.append(f"Q: {question}")
-    conversation_history.append(f"A: {answer}")
-    session['conversation_history'] = conversation_history
-    
-    return jsonify({
-        'answer': answer,
-        'context': context,
-        'is_first_message': False
-    })
+@app.route('/api/reset', methods=['POST'])
+@token_required
+def reset_session(current_user):
+    return jsonify({'status': 'success'})
+
+# Serve React app
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.template_folder, 'index.html')
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False)

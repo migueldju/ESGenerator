@@ -1,0 +1,43 @@
+# Flask and extensions
+Flask
+Flask-Cors
+Flask-SQLAlchemy
+Flask-Login
+
+# Database
+SQLAlchemy
+alembic
+mysqlclient
+pymysql
+cryptography
+
+# Email
+email-validator
+
+# LLM and NLP
+openai
+langchain
+langchain-core
+sentence-transformers
+faiss-cpu
+
+# Utilities
+python-dotenv
+pydantic
+markdown
+regex
+requests
+Werkzeug
+PyJWT
+
+# For production
+gunicorn
+
+# Vectorstore
+numpy
+scikit-learn
+nltk
+
+# File handling
+python-magic
+
