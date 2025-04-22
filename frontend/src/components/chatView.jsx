@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faRedo } from '@fortawesome/free-solid-svg-icons';
+import { useAuth } from '../contexts/AuthContext';
+import AuthButton from './auth/AuthButton';
+import axios from 'axios';
 import '../styles/ChatView.css';
 
 const ChatView = () => {
@@ -21,13 +24,14 @@ const ChatView = () => {
     naceSector: 'Not classified yet',
     esrsSector: 'Not determined yet'
   });
+  const [conversationId, setConversationId] = useState(null);
 
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const [placeholderText, setPlaceholder] = useState("Enter your company description...");
-
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -48,7 +52,6 @@ const ChatView = () => {
     }
   }, [inputValue]);
 
-
   const handleInputChange = (e) => {
     setInputValue(e.target.value);
   };
@@ -59,94 +62,83 @@ const ChatView = () => {
       handleSendMessage();
     }
   };
-
-  const [companyDesc, setCompanyDesc] = useState('');
-  const [conversationHistory, setConversationHistory] = useState([]);
   
   const handleSendMessage = async () => {
-      if (!inputValue.trim()) return;
-  
-      setMessages(prev => [...prev, { type: 'user', content: inputValue }]);
-      
-      const currentInput = inputValue;
-      setInputValue('');
-      
-      setIsLoading(true);
-  
-      try {
-          const formData = new FormData();
-          formData.append('message', currentInput);
-          
-          if (companyInfo.initialized) {
-              formData.append('company_desc', companyDesc);
-              formData.append('nace_sector', companyInfo.naceSector);
-              formData.append('esrs_sector', companyInfo.esrsSector);
-              formData.append('conversation_history', JSON.stringify(conversationHistory));
-          }
-  
-          const response = await fetch('http://localhost:5000/chat', {
-              method: 'POST',
-              body: formData,
-              credentials: 'include'
-          });
-  
-          const data = await response.json();
-  
-          if (data.is_first_message) {
-              setCompanyInfo({
-                  initialized: true,
-                  naceSector: data.nace_sector,
-                  esrsSector: data.esrs_sector
-              });
-              setCompanyDesc(data.company_desc);
-              setConversationHistory(data.conversation_history);
-              setPlaceholder("Ask your question here...");
-          } else {
-              if (data.conversation_history) {
-                  setConversationHistory(data.conversation_history);
-              }
-          }
-  
-          setMessages(prev => [...prev, { type: 'bot', content: data.answer }]);
-      } catch (error) {
-          console.error('Error:', error);
-          setMessages(prev => [...prev, { 
-              type: 'bot', 
-              content: "I'm sorry, there was an error processing your request. Please try again." 
-          }]);
-      } finally {
-          setIsLoading(false);
+    if (!inputValue.trim()) return;
+
+    const userMessage = {
+      type: 'user',
+      content: inputValue
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputValue;
+    setInputValue('');
+    setIsLoading(true);
+
+    try {
+      const data = {
+        message: currentInput,
+        conversation_id: conversationId
+      };
+
+      const response = await axios.post('/api/chat', data);
+      const responseData = response.data;
+
+      if (responseData.is_first_message) {
+        setCompanyInfo({
+          initialized: true,
+          naceSector: responseData.nace_sector,
+          esrsSector: responseData.esrs_sector
+        });
+        setConversationId(responseData.conversation_id);
+        setPlaceholder("Ask your question here...");
       }
+
+      setMessages(prev => [...prev, { 
+        type: 'bot', 
+        content: responseData.answer 
+      }]);
+    } catch (error) {
+      console.error('Error:', error);
+      
+      let errorMessage = "I'm sorry, there was an error processing your request. Please try again.";
+      
+      if (!isAuthenticated && error.response && error.response.status === 401) {
+        errorMessage = "You need to log in to save this conversation. Your session will be lost if you leave or refresh the page.";
+      }
+      
+      setMessages(prev => [...prev, { 
+        type: 'bot', 
+        content: errorMessage
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleReset = async () => {
     try {
-      const response = await fetch('/reset', {
-        method: 'POST',
+      if (conversationId && isAuthenticated) {
+        await axios.delete(`/api/conversations/${conversationId}`);
+      }
+      
+      setMessages([
+        {
+          type: 'bot',
+          content: `<h2>Welcome to ESGenerator</h2>
+                    <p>Please provide a detailed description of your company's activities, products, services, and sector to help me determine the applicable ESRS reporting standards.</p>`,
+          isWelcome: true
+        }
+      ]);
+      setInputValue('');
+      setCompanyInfo({
+        initialized: false,
+        naceSector: 'Not classified yet',
+        esrsSector: 'Not determined yet'
       });
-      
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      
-      const data = await response.json();
-      
-      if (data.status === 'success') {
-        setMessages([
-          {
-            type: 'bot',
-            content: `<h2>Welcome to ESGenerator</h2>
-                      <p>Please provide a detailed description of your company's activities, products, services, and sector to help me determine the applicable ESRS reporting standards.</p>`,
-            isWelcome: true
-          }
-        ]);
-        setInputValue('');
-        setCompanyInfo({
-          initialized: false,
-          naceSector: 'Not classified yet',
-          esrsSector: 'Not determined yet'
-        });
-      }
+      setConversationId(null);
+      setPlaceholder("Enter your company description...");
     } catch (error) {
       console.error('Error resetting chat:', error);
     }
@@ -154,14 +146,17 @@ const ChatView = () => {
 
   return (
     <div className="container">
-      <div className="nav-container">
-        <button className="nav-button active">Chat</button>
-        <button 
-          className="nav-button inactive" 
-          onClick={() => navigate('/editor')}
-        >
-          Editor
-        </button>
+      <div className="top-bar">
+        <div className="nav-container">
+          <button className="nav-button active">Chat</button>
+          <button 
+            className="nav-button inactive" 
+            onClick={() => navigate('/editor')}
+          >
+            Editor
+          </button>
+        </div>
+        <AuthButton />
       </div>
       
       <div className="header">

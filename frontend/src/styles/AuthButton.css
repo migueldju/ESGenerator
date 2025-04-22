@@ -1,0 +1,97 @@
+/* frontend/src/styles/AuthButton.css */
+.auth-container {
+    position: relative;
+  }
+  
+  .auth-buttons {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .login-button,
+  .register-button {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .login-button {
+    background-color: transparent;
+    border: 1px solid #fff;
+    color: #fff;
+  }
+  
+  .login-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .register-button {
+    background-color: #fff;
+    border: 1px solid #fff;
+    color: #2a66b3;
+  }
+  
+  .register-button:hover {
+    background-color: #f0f0f0;
+  }
+  
+  .user-menu {
+    position: relative;
+  }
+  
+  .user-button {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid #fff;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .user-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+  
+  .user-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 5px;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    min-width: 150px;
+    z-index: 100;
+  }
+  
+  .dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 15px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #333;
+    transition: background-color 0.2s;
+  }
+  
+  .dropdown-item:hover {
+    background-color: #f5f7fa;
+  }
+  
+  /* Media Queries */
+  @media (max-width: 600px) {
+    .login-button,
+    .register-button,
+    .user-button {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+  }

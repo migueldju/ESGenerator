@@ -1,10 +1,13 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { pdfExporter } from 'quill-to-pdf';
 import { saveAs } from 'file-saver';
 import { generateWord } from 'quill-to-word';
+import { useAuth } from '../contexts/AuthContext';
+import AuthButton from './auth/AuthButton';
+import axios from 'axios';
 import '../styles/EditorView.css';
 
 const EditorView = () => {
@@ -12,9 +15,32 @@ const EditorView = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState('');
   const [exportFormat, setExportFormat] = useState('docx');
+  const [documentName, setDocumentName] = useState('ESRS Report');
+  const [documentId, setDocumentId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [documents, setDocuments] = useState([]);
+  const [showDocumentsList, setShowDocumentsList] = useState(false);
+  
   const quillRef = useRef(null);
-  const fileInputRef = useRef(null);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  
+  useEffect(() => {
+    // Load user documents if authenticated
+    if (isAuthenticated) {
+      fetchDocuments();
+    }
+  }, [isAuthenticated]);
+
+  const fetchDocuments = async () => {
+    try {
+      const response = await axios.get('/api/documents');
+      setDocuments(response.data);
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+    }
+  };
 
   const modules = {
     toolbar: [
@@ -42,8 +68,95 @@ const EditorView = () => {
     setContent(value);
   };
 
+  const handleDocumentNameChange = (e) => {
+    setDocumentName(e.target.value);
+  };
+
   const handleFormatChange = (e) => {
     setExportFormat(e.target.value);
+  };
+
+  const saveDocument = async () => {
+    if (!isAuthenticated) {
+      setSaveMessage('You need to log in to save documents.');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+
+    if (!documentName.trim()) {
+      setSaveMessage('Please enter a document name.');
+      setTimeout(() => setSaveMessage(''), 3000);
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveMessage('');
+
+    try {
+      let response;
+      
+      if (documentId) {
+        // Update existing document
+        response = await axios.put(`/api/documents/${documentId}`, {
+          name: documentName,
+          content: content
+        });
+        setSaveMessage('Document updated successfully!');
+      } else {
+        // Create new document
+        response = await axios.post('/api/documents', {
+          name: documentName,
+          content: content
+        });
+        setDocumentId(response.data.document.id);
+        setSaveMessage('Document saved successfully!');
+      }
+      
+      // Refresh documents list
+      fetchDocuments();
+    } catch (error) {
+      console.error('Error saving document:', error);
+      setSaveMessage('Error saving document. Please try again.');
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  };
+
+  const loadDocument = async (doc) => {
+    try {
+      const response = await axios.get(`/api/documents/${doc.id}`);
+      setContent(response.data.document.content);
+      setDocumentName(response.data.document.name);
+      setDocumentId(response.data.document.id);
+      setShowDocumentsList(false);
+    } catch (error) {
+      console.error('Error loading document:', error);
+    }
+  };
+
+  const createNewDocument = () => {
+    setContent('');
+    setDocumentName('ESRS Report');
+    setDocumentId(null);
+    setShowDocumentsList(false);
+  };
+
+  const deleteDocument = async (id, e) => {
+    e.stopPropagation();
+    
+    if (window.confirm('Are you sure you want to delete this document?')) {
+      try {
+        await axios.delete(`/api/documents/${id}`);
+        fetchDocuments();
+        
+        if (documentId === id) {
+          createNewDocument();
+        }
+      } catch (error) {
+        console.error('Error deleting document:', error);
+      }
+    }
   };
 
   const handleExport = async () => {
@@ -81,7 +194,7 @@ const EditorView = () => {
     const quillEditor = quillRef.current.getEditor();
     
     const pdfOptions = {
-      filename: 'ESRS_Report.pdf',
+      filename: `${documentName}.pdf`,
       exportAs: 'blob',
       styleOptions: {
         paragraphSpacing: {
@@ -95,11 +208,11 @@ const EditorView = () => {
           left: 180,
         },
       },
-      title: 'ESRS Report',
+      title: documentName,
       author: 'ESGenerator',
       subject: 'European Sustainability Reporting Standards',
       keywords: 'ESRS, Sustainability, Report',
-      headerText: 'ESRS Report',
+      headerText: documentName,
       footerText: `Generated on ${new Date().toLocaleDateString()}`,
     };
     
@@ -108,7 +221,7 @@ const EditorView = () => {
     if (window.showSaveFilePicker) {
       try {
         const opts = {
-          suggestedName: 'ESRS_Report.pdf',
+          suggestedName: `${documentName}.pdf`,
           types: [{
             description: 'PDF File',
             accept: {'application/pdf': ['.pdf']}
@@ -121,11 +234,11 @@ const EditorView = () => {
         await writable.close();
       } catch (err) {
         if (err.name !== 'AbortError') {
-          saveAs(pdfBlob, 'ESRS_Report.pdf');
+          saveAs(pdfBlob, `${documentName}.pdf`);
         }
       }
     } else {
-      saveAs(pdfBlob, 'ESRS_Report.pdf');
+      saveAs(pdfBlob, `${documentName}.pdf`);
     }
   };
 
@@ -147,7 +260,7 @@ const EditorView = () => {
         },
       },
       
-      title: 'ESRS Report',
+      title: documentName,
       subject: 'European Sustainability Reporting Standards',
       creator: 'ESGenerator',
       description: 'ESRS Report generated with ESGenerator',
@@ -158,7 +271,7 @@ const EditorView = () => {
     if (window.showSaveFilePicker) {
       try {
         const opts = {
-          suggestedName: 'ESRS_Report.docx',
+          suggestedName: `${documentName}.docx`,
           types: [{
             description: 'Word Document',
             accept: {'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']}
@@ -171,11 +284,11 @@ const EditorView = () => {
         await writable.close();
       } catch (err) {
         if (err.name !== 'AbortError') {
-          saveAs(docxBlob, 'ESRS_Report.docx');
+          saveAs(docxBlob, `${documentName}.docx`);
         }
       }
     } else {
-      saveAs(docxBlob, 'ESRS_Report.docx');
+      saveAs(docxBlob, `${documentName}.docx`);
     }
   };
 
@@ -186,7 +299,7 @@ const EditorView = () => {
     if (window.showSaveFilePicker) {
       try {
         const opts = {
-          suggestedName: 'ESRS_Report.txt',
+          suggestedName: `${documentName}.txt`,
           types: [{
             description: 'Text File',
             accept: {'text/plain': ['.txt']}
@@ -199,24 +312,27 @@ const EditorView = () => {
         await writable.close();
       } catch (err) {
         if (err.name !== 'AbortError') {
-          saveAs(txtBlob, 'ESRS_Report.txt');
+          saveAs(txtBlob, `${documentName}.txt`);
         }
       }
     } else {
-      saveAs(txtBlob, 'ESRS_Report.txt');
+      saveAs(txtBlob, `${documentName}.txt`);
     }
   };
 
   return (
     <div className="container">
-      <div className="nav-container">
-        <button 
-          className="nav-button inactive" 
-          onClick={() => navigate('/')}
-        >
-          Chat
-        </button>
-        <button className="nav-button active">Editor</button>
+      <div className="top-bar">
+        <div className="nav-container">
+          <button 
+            className="nav-button inactive" 
+            onClick={() => navigate('/')}
+          >
+            Chat
+          </button>
+          <button className="nav-button active">Editor</button>
+        </div>
+        <AuthButton />
       </div>
       
       <div className="header">
@@ -224,6 +340,75 @@ const EditorView = () => {
       </div>
       
       <div className="editor-container">
+        <div className="editor-toolbar">
+          <div className="document-controls">
+            <input
+              type="text"
+              className="document-name-input"
+              value={documentName}
+              onChange={handleDocumentNameChange}
+              placeholder="Document name"
+            />
+            
+            <button 
+              className="save-button"
+              onClick={saveDocument}
+              disabled={isSaving || !isAuthenticated}
+              title={isAuthenticated ? "Save document" : "Log in to save documents"}
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+            
+            {isAuthenticated && (
+              <div className="documents-dropdown">
+                <button 
+                  className="documents-button"
+                  onClick={() => setShowDocumentsList(!showDocumentsList)}
+                >
+                  Documents
+                </button>
+                
+                {showDocumentsList && (
+                  <div className="documents-list">
+                    <button 
+                      className="new-document-button"
+                      onClick={createNewDocument}
+                    >
+                      + New Document
+                    </button>
+                    
+                    {documents.length > 0 ? (
+                      documents.map(doc => (
+                        <div 
+                          key={doc.id} 
+                          className="document-item"
+                          onClick={() => loadDocument(doc)}
+                        >
+                          <span>{doc.name}</span>
+                          <button 
+                            className="delete-document-button"
+                            onClick={(e) => deleteDocument(doc.id, e)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="no-documents">No saved documents</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {saveMessage && (
+            <div className={`save-message ${saveMessage.includes('Error') || saveMessage.includes('need to log in') ? 'error' : 'success'}`}>
+              {saveMessage}
+            </div>
+          )}
+        </div>
+        
         <div className="quill-wrapper">
           <ReactQuill
             ref={quillRef}
@@ -255,7 +440,7 @@ const EditorView = () => {
             </select>
             
             <button 
-              className="save-button"
+              className="export-button"
               onClick={handleExport}
               disabled={isDownloading}
             >
