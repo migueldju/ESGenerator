@@ -4,7 +4,6 @@ import ReactMarkdown from 'react-markdown';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faRedo } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { useConversations } from '../contexts/conversationContext';
 import AuthButton from './auth/AuthButton';
 import axios from 'axios';
 import '../styles/chatView.css';
@@ -26,6 +25,7 @@ const ChatView = () => {
     esrsSector: 'Not determined yet'
   });
   const [conversationId, setConversationId] = useState(null);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
@@ -89,10 +89,14 @@ const ChatView = () => {
       if (responseData.is_first_message) {
         setCompanyInfo({
           initialized: true,
-          naceSector: responseData.nace_sector,
-          esrsSector: responseData.esrs_sector
+          naceSector: responseData.nace_sector || 'Not classified',
+          esrsSector: responseData.esrs_sector || 'Not determined'
         });
-        setConversationId(responseData.conversation_id);
+        
+        if (responseData.conversation_id) {
+          setConversationId(responseData.conversation_id);
+        }
+        
         setPlaceholder("Ask your question here...");
       }
 
@@ -104,10 +108,6 @@ const ChatView = () => {
       console.error('Error:', error);
       
       let errorMessage = "I'm sorry, there was an error processing your request. Please try again.";
-      
-      if (!isAuthenticated && error.response && error.response.status === 401) {
-        errorMessage = "You need to log in to save this conversation. Your session will be lost if you leave or refresh the page.";
-      }
       
       setMessages(prev => [...prev, { 
         type: 'bot', 
@@ -121,7 +121,11 @@ const ChatView = () => {
   const handleReset = async () => {
     try {
       if (conversationId && isAuthenticated) {
-        await axios.delete(`/api/conversations/${conversationId}`);
+        try {
+          await axios.delete(`/api/conversations/${conversationId}`);
+        } catch (error) {
+          console.error('Error deleting conversation:', error);
+        }
       }
       
       setMessages([
@@ -140,6 +144,7 @@ const ChatView = () => {
       });
       setConversationId(null);
       setPlaceholder("Enter your company description...");
+      setShowAuthPrompt(false);
     } catch (error) {
       console.error('Error resetting chat:', error);
     }
@@ -204,6 +209,12 @@ const ChatView = () => {
             </div>
           </div>
         )}
+        
+        {showAuthPrompt && !isAuthenticated && (
+          <div className="auth-prompt-message">
+            <p>Login to save your conversation and access more features. Guest conversations are not saved when you leave.</p>
+          </div>
+        )}
       </div>
       
       <div className="input-container">
@@ -219,6 +230,7 @@ const ChatView = () => {
         <button 
           id="send-button"
           onClick={handleSendMessage}
+          disabled={isLoading}
         >
           <FontAwesomeIcon icon={faPaperPlane} />
         </button>

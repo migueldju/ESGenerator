@@ -15,9 +15,16 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // Redirect to home page if user is not authenticated
+  // Allow guest access but show login prompt
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+    // Instead of redirecting, you can show a login prompt
+    return (
+      <div className="auth-prompt">
+        <h2>Login Required</h2>
+        <p>Please log in to access this feature. You'll be redirected to the homepage in 3 seconds.</p>
+        {setTimeout(() => window.location.href = '/', 3000)}
+      </div>
+    );
   }
 
   // If authenticated, render the protected component

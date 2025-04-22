@@ -28,12 +28,13 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///esrs_db.sqlite'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Email configuration
-app.config['MAIL_SERVER'] = 'smtp.example.com'
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'  # Change to your SMTP server
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your-email@example.com'
-app.config['MAIL_PASSWORD'] = 'your-email-password'
-app.config['MAIL_DEFAULT_SENDER'] = 'your-email@example.com'
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'your-email@gmail.com')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'your-app-password')
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'your-email@gmail.com')
+app.config['MAIL_SUPPRESS_SEND'] = True  # Set to False in production with valid credentials'
 
 # JWT configuration
 app.config['JWT_SECRET_KEY'] = 'esrs_jwt_secret_key'
@@ -144,11 +145,20 @@ def register():
     db.session.add(new_user)
     db.session.commit()
     
+    # In development mode, auto-verify the user without email
+    if app.config['MAIL_SUPPRESS_SEND']:
+        new_user.is_verified = True
+        db.session.commit()
+        return jsonify({"message": "Registration successful. Email verification skipped in development mode."}), 201
+    
+    # Try to send verification email
     try:
         send_verification_email(new_user)
         return jsonify({"message": "Registration successful. Please check your email to verify your account."}), 201
     except Exception as e:
-        return jsonify({"error": f"Failed to send verification email: {str(e)}"}), 500
+        app.logger.error(f"Failed to send verification email: {str(e)}")
+        # Still return success since user is created, but with a warning
+        return jsonify({"message": "Registration successful, but email verification could not be sent. Please contact support."}), 201
 
 @app.route('/api/verify/<token>', methods=['GET'])
 def verify_email(token):

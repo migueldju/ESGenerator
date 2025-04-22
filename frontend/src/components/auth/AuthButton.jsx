@@ -1,9 +1,10 @@
+// frontend/src/components/auth/AuthButton.jsx
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import LoginModal from './LoginModal';
 import RegisterModal from './RegisterModal';
 import ForgotPasswordModal from './ForgotPasswordModal';
-import '../../styles/AuthButton.css';
+import '../../styles/AuthModals.css';
 
 const AuthButton = () => {
   const { user, logout, isAuthenticated } = useAuth();
@@ -50,7 +51,7 @@ const AuthButton = () => {
       {isAuthenticated ? (
         <div className="user-menu">
           <button className="user-button" onClick={toggleDropdown}>
-            {user.username}
+            {user?.username || 'User'}
           </button>
           {showDropdown && (
             <div className="user-dropdown">

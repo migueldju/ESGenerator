@@ -252,6 +252,41 @@
   .dropdown-item:hover {
     background-color: #f5f7fa;
   }
+
+  .auth-buttons {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .login-button,
+  .register-button {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .login-button {
+    background-color: transparent;
+    border: 1px solid #fff;
+    color: #fff;
+  }
+  
+  .login-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .register-button {
+    background-color: #fff;
+    border: 1px solid #fff;
+    color: #2a66b3;
+  }
+  
+  .register-button:hover {
+    background-color: #f0f0f0;
+  }
   
   /* Media Queries */
   @media (max-width: 600px) {

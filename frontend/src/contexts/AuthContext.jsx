@@ -1,4 +1,4 @@
-// frontend/src/contexts/AuthContext.js
+// frontend/src/contexts/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 
@@ -18,18 +18,23 @@ export const AuthProvider = ({ children }) => {
           // Configure axios to send the token with requests
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           
-          const response = await axios.get('/api/check-auth');
-          if (response.data.authenticated) {
-            setUser(response.data.user);
-          } else {
-            // Token is invalid or expired
+          try {
+            const response = await axios.get('/api/check-auth');
+            if (response.data.authenticated) {
+              setUser(response.data.user);
+            } else {
+              // Token is invalid or expired
+              localStorage.removeItem('token');
+              delete axios.defaults.headers.common['Authorization'];
+            }
+          } catch (err) {
+            console.error('Auth check error:', err);
             localStorage.removeItem('token');
             delete axios.defaults.headers.common['Authorization'];
           }
         }
       } catch (err) {
-        console.error('Auth check error:', err);
-        localStorage.removeItem('token');
+        console.error('Auth initialization error:', err);
       } finally {
         setLoading(false);
       }
@@ -64,8 +69,9 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post('/api/register', { username, email, password });
       return { success: true, message: response.data.message };
     } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed');
-      return { success: false, message: err.response?.data?.error || 'Registration failed' };
+      const errorMessage = err.response?.data?.error || 'Registration failed';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
@@ -73,16 +79,26 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
     setUser(null);
+    return true;
   };
 
   const forgotPassword = async (email) => {
     try {
       setError(null);
+      // In development mode, just simulate success
+      if (process.env.NODE_ENV === 'development') {
+        return { 
+          success: true, 
+          message: "If your email exists in our system, you will receive a password reset link. (Note: Email sending is disabled in development mode)" 
+        };
+      }
+      
       const response = await axios.post('/api/forgot-password', { email });
       return { success: true, message: response.data.message };
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to send reset email');
-      return { success: false, message: err.response?.data?.error || 'Failed to send reset email' };
+      const errorMessage = err.response?.data?.error || 'Failed to send reset email';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
@@ -92,8 +108,9 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(`/api/reset-password/${token}`, { password });
       return { success: true, message: response.data.message };
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to reset password');
-      return { success: false, message: err.response?.data?.error || 'Failed to reset password' };
+      const errorMessage = err.response?.data?.error || 'Failed to reset password';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 

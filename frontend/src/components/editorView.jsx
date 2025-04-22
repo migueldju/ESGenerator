@@ -21,6 +21,7 @@ const EditorView = () => {
   const [saveMessage, setSaveMessage] = useState('');
   const [documents, setDocuments] = useState([]);
   const [showDocumentsList, setShowDocumentsList] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   
   const quillRef = useRef(null);
   const navigate = useNavigate();
@@ -30,6 +31,34 @@ const EditorView = () => {
     // Load user documents if authenticated
     if (isAuthenticated) {
       fetchDocuments();
+    } else {
+      // Show login prompt for guest users
+      setShowLoginPrompt(true);
+      // Still allow them to use the editor, just can't save
+      setContent(`# ESRS Report
+## Introduction
+Write your European Sustainability Reporting Standards (ESRS) report here.
+
+## Company Overview
+Provide a brief description of your company and its activities.
+
+## Sustainability Strategy
+Outline your company's sustainability strategy and goals.
+
+## Environmental Impact
+Detail your company's environmental footprint and initiatives.
+
+## Social Responsibility
+Describe your company's approach to social responsibility.
+
+## Governance
+Explain your company's governance structure for sustainability.
+
+## Conclusion
+Summarize your key sustainability achievements and future plans.
+
+*Note: As a guest user, you can still create and export documents but cannot save them to your account. Login to enable saving.*
+`);
     }
   }, [isAuthenticated]);
 
@@ -77,7 +106,7 @@ const EditorView = () => {
 
   const saveDocument = async () => {
     if (!isAuthenticated) {
-      setSaveMessage('You need to log in to save documents.');
+      setSaveMessage('You need to log in to save documents. You can still export your work.');
       setTimeout(() => setSaveMessage(''), 3000);
       return;
     }
@@ -225,29 +254,7 @@ const EditorView = () => {
     };
     
     const pdfBlob = await pdfExporter.generatePdf(quillEditor.getContents(), pdfOptions);
-    
-    if (window.showSaveFilePicker) {
-      try {
-        const opts = {
-          suggestedName: `${documentName}.pdf`,
-          types: [{
-            description: 'PDF File',
-            accept: {'application/pdf': ['.pdf']}
-          }]
-        };
-        
-        const fileHandle = await window.showSaveFilePicker(opts);
-        const writable = await fileHandle.createWritable();
-        await writable.write(pdfBlob);
-        await writable.close();
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          saveAs(pdfBlob, `${documentName}.pdf`);
-        }
-      }
-    } else {
-      saveAs(pdfBlob, `${documentName}.pdf`);
-    }
+    saveAs(pdfBlob, `${documentName}.pdf`);
   };
 
   const exportToDOCX = async () => {
@@ -280,29 +287,7 @@ const EditorView = () => {
     };
     
     const docxBlob = await generateWord(quillEditor.getContents(), docxOptions);
-    
-    if (window.showSaveFilePicker) {
-      try {
-        const opts = {
-          suggestedName: `${documentName}.docx`,
-          types: [{
-            description: 'Word Document',
-            accept: {'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']}
-          }]
-        };
-        
-        const fileHandle = await window.showSaveFilePicker(opts);
-        const writable = await fileHandle.createWritable();
-        await writable.write(docxBlob);
-        await writable.close();
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          saveAs(docxBlob, `${documentName}.docx`);
-        }
-      }
-    } else {
-      saveAs(docxBlob, `${documentName}.docx`);
-    }
+    saveAs(docxBlob, `${documentName}.docx`);
   };
 
   const exportToTXT = () => {
@@ -314,34 +299,7 @@ const EditorView = () => {
     const quillEditor = quillRef.current.getEditor();
     const plainText = quillEditor.getText();
     const txtBlob = new Blob([plainText], { type: 'text/plain;charset=utf-8' });
-    
-    if (window.showSaveFilePicker) {
-      try {
-        const opts = {
-          suggestedName: `${documentName}.txt`,
-          types: [{
-            description: 'Text File',
-            accept: {'text/plain': ['.txt']}
-          }]
-        };
-        
-        window.showSaveFilePicker(opts)
-          .then(fileHandle => fileHandle.createWritable())
-          .then(writable => {
-            writable.write(txtBlob);
-            return writable.close();
-          })
-          .catch(err => {
-            if (err.name !== 'AbortError') {
-              saveAs(txtBlob, `${documentName}.txt`);
-            }
-          });
-      } catch (err) {
-        saveAs(txtBlob, `${documentName}.txt`);
-      }
-    } else {
-      saveAs(txtBlob, `${documentName}.txt`);
-    }
+    saveAs(txtBlob, `${documentName}.txt`);
   };
 
   return (
@@ -362,6 +320,12 @@ const EditorView = () => {
       <div className="header">
         <h1>ESGenerator - Editor</h1>
       </div>
+      
+      {showLoginPrompt && !isAuthenticated && (
+        <div className="auth-prompt-message" style={{margin: '0 auto 20px', textAlign: 'center'}}>
+          <p>You're using the editor in guest mode. You can create and export documents, but to save them you'll need to log in.</p>
+        </div>
+      )}
       
       <div className="editor-container">
         <div className="editor-toolbar">
