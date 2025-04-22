@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/AuthModals.css';
 
@@ -9,6 +9,20 @@ const ForgotPasswordModal = ({ onClose, switchToLogin }) => {
   const [successMessage, setSuccessMessage] = useState('');
   
   const { forgotPassword } = useAuth();
+
+  // Add keyboard event handling for Escape key
+  useEffect(() => {
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscKey);
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [onClose]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,9 +44,16 @@ const ForgotPasswordModal = ({ onClose, switchToLogin }) => {
     }
   };
 
+  // Handle backdrop click
+  const handleBackdropClick = (e) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="auth-modal">
-      <div className="auth-modal-content">
+    <div className="auth-modal" onClick={handleBackdropClick}>
+      <div className="auth-modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="auth-modal-header">
           <h2>Reset Password</h2>
           <button className="close-button" onClick={onClose}>×</button>
@@ -75,3 +96,5 @@ const ForgotPasswordModal = ({ onClose, switchToLogin }) => {
     </div>
   );
 };
+
+export default ForgotPasswordModal;

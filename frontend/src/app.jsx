@@ -1,11 +1,11 @@
-// frontend/src/App.jsx
+// frontend/src/app.jsx
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import ChatView from './components/ChatView';
-import EditorView from './components/EditorView';
+import ChatView from './components/chatView';  // Changed from './components/ChatView'
+import EditorView from './components/editorView';  // Changed from './components/EditorView'
 import ResetPassword from './components/auth/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
-import './styles/App.css';
+import './styles/app.css';  // Changed from './styles/App.css'
 
 function App() {
   return (

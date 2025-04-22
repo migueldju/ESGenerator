@@ -8,7 +8,7 @@ import { generateWord } from 'quill-to-word';
 import { useAuth } from '../contexts/AuthContext';
 import AuthButton from './auth/AuthButton';
 import axios from 'axios';
-import '../styles/EditorView.css';
+import '../styles/editorView.css';
 
 const EditorView = () => {
   const [content, setContent] = useState('');
@@ -36,7 +36,7 @@ const EditorView = () => {
   const fetchDocuments = async () => {
     try {
       const response = await axios.get('/api/documents');
-      setDocuments(response.data);
+      setDocuments(response.data.documents || []);
     } catch (error) {
       console.error('Error fetching documents:', error);
     }
@@ -49,17 +49,16 @@ const EditorView = () => {
       [{ 'list': 'ordered' }, { 'list': 'bullet' }],
       [{ 'indent': '-1' }, { 'indent': '+1' }],
       [{ 'align': [] }],
-      [{ 'link': [] }],
-      [{'color': [] }, { 'background': [] }],
+      [{ 'color': [] }, { 'background': [] }],
       ['clean']
     ]
   };
+
   const formats = [
     'header',
     'bold', 'italic', 'underline', 'strike',
     'list', 'bullet',
     'indent',
-    'link',
     'align',
     'color', 'background'
   ];
@@ -108,7 +107,7 @@ const EditorView = () => {
           name: documentName,
           content: content
         });
-        setDocumentId(response.data.document.id);
+        setDocumentId(response.data.document?.id);
         setSaveMessage('Document saved successfully!');
       }
       
@@ -126,12 +125,16 @@ const EditorView = () => {
   const loadDocument = async (doc) => {
     try {
       const response = await axios.get(`/api/documents/${doc.id}`);
-      setContent(response.data.document.content);
-      setDocumentName(response.data.document.name);
-      setDocumentId(response.data.document.id);
+      if (response.data.document) {
+        setContent(response.data.document.content);
+        setDocumentName(response.data.document.name);
+        setDocumentId(response.data.document.id);
+      }
       setShowDocumentsList(false);
     } catch (error) {
       console.error('Error loading document:', error);
+      setSaveMessage('Error loading document. Please try again.');
+      setTimeout(() => setSaveMessage(''), 3000);
     }
   };
 
@@ -191,6 +194,11 @@ const EditorView = () => {
   };
 
   const exportToPDF = async () => {
+    if (!quillRef.current) {
+      setDownloadMessage('Editor not initialized. Please try again.');
+      return;
+    }
+    
     const quillEditor = quillRef.current.getEditor();
     
     const pdfOptions = {
@@ -243,6 +251,11 @@ const EditorView = () => {
   };
 
   const exportToDOCX = async () => {
+    if (!quillRef.current) {
+      setDownloadMessage('Editor not initialized. Please try again.');
+      return;
+    }
+    
     const quillEditor = quillRef.current.getEditor();
     
     const docxOptions = {
@@ -259,7 +272,6 @@ const EditorView = () => {
           left: 360,
         },
       },
-      
       title: documentName,
       subject: 'European Sustainability Reporting Standards',
       creator: 'ESGenerator',
@@ -268,6 +280,7 @@ const EditorView = () => {
     };
     
     const docxBlob = await generateWord(quillEditor.getContents(), docxOptions);
+    
     if (window.showSaveFilePicker) {
       try {
         const opts = {
@@ -292,10 +305,16 @@ const EditorView = () => {
     }
   };
 
-  const exportToTXT = async () => {
+  const exportToTXT = () => {
+    if (!quillRef.current) {
+      setDownloadMessage('Editor not initialized. Please try again.');
+      return;
+    }
+    
     const quillEditor = quillRef.current.getEditor();
     const plainText = quillEditor.getText();
     const txtBlob = new Blob([plainText], { type: 'text/plain;charset=utf-8' });
+    
     if (window.showSaveFilePicker) {
       try {
         const opts = {
@@ -306,14 +325,19 @@ const EditorView = () => {
           }]
         };
         
-        const fileHandle = await window.showSaveFilePicker(opts);
-        const writable = await fileHandle.createWritable();
-        await writable.write(txtBlob);
-        await writable.close();
+        window.showSaveFilePicker(opts)
+          .then(fileHandle => fileHandle.createWritable())
+          .then(writable => {
+            writable.write(txtBlob);
+            return writable.close();
+          })
+          .catch(err => {
+            if (err.name !== 'AbortError') {
+              saveAs(txtBlob, `${documentName}.txt`);
+            }
+          });
       } catch (err) {
-        if (err.name !== 'AbortError') {
-          saveAs(txtBlob, `${documentName}.txt`);
-        }
+        saveAs(txtBlob, `${documentName}.txt`);
       }
     } else {
       saveAs(txtBlob, `${documentName}.txt`);

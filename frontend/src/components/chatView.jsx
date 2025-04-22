@@ -4,9 +4,10 @@ import ReactMarkdown from 'react-markdown';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faRedo } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { useConversations } from '../contexts/conversationContext';
 import AuthButton from './auth/AuthButton';
 import axios from 'axios';
-import '../styles/ChatView.css';
+import '../styles/chatView.css';
 
 const ChatView = () => {
   const [messages, setMessages] = useState([
