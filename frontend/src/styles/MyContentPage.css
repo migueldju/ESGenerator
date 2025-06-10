@@ -1,0 +1,338 @@
+/* Updated MyContentPage.css with consistent layout */
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 70px);
+  }
+  
+  .container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+  
+  .content-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .my-content-header {
+    margin-bottom: 20px;
+  }
+  
+  .my-content-header h2 {
+    color: var(--primary-color);
+    font-size: 24px;
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  
+  .tabs {
+    display: flex;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    justify-content: center;
+  }
+  
+  .tabs button {
+    padding: 8px 16px;
+    font-size: 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #666;
+    transition: all 0.3s ease;
+  }
+  
+  .tabs button.active {
+    color: var(--primary-color);
+    font-weight: 600;
+    background-color: rgba(42, 102, 179, 0.1);
+  }
+  
+  .tabs button:hover:not(.active) {
+    background-color: #f5f5f5;
+  }
+  
+  .content-container {
+    flex: 1;
+    overflow-y: auto;
+  }
+  
+  .items-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 0;
+    color: var(--primary-color);
+    font-size: 18px;
+    gap: 15px;
+  }
+  
+  .loading-spinner svg {
+    font-size: 40px;
+  }
+  
+  .error-message {
+    background-color: #fdecea;
+    border-left: 4px solid #e74c3c;
+    color: #e74c3c;
+    padding: 12px 15px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 0;
+    text-align: center;
+  }
+  
+  .empty-state p {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 20px;
+  }
+  
+  .start-button {
+    display: inline-block;
+    background-color: var(--primary-color);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: background-color 0.3s;
+  }
+  
+  .start-button:hover {
+    background-color: #1e5095;
+  }
+  
+  .items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .item-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 15px 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: box-shadow 0.3s ease;
+    background-color: #fff;
+  }
+  
+  .item-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .item-info {
+    flex: 1;
+  }
+  
+  .item-info h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: #333;
+  }
+  
+  .item-details {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 14px;
+    color: #666;
+  }
+  
+  .additional-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+  }
+  
+  .company-description-container {
+    display: flex;
+    flex-direction: column;
+    background-color: #f9f9f9;
+    padding: 10px;
+    border-radius: 4px;
+    border-left: 3px solid var(--primary-color);
+    margin-bottom: 5px;
+  }
+  
+  .detail-label {
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #444;
+  }
+  
+  .detail-content {
+    line-height: 1.4;
+    white-space: pre-line;
+    word-break: break-word;
+  }
+  
+  .item-actions {
+    display: flex;
+    gap: 10px;
+    margin-left: 15px;
+  }
+  
+  .action-button {
+    background: none;
+    border: 1px solid;
+    border-radius: 4px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+  
+  .view-button {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+  }
+  
+  .view-button:hover {
+    background-color: var(--primary-color);
+    color: white;
+  }
+  
+  .delete-button {
+    color: #e74c3c;
+    border-color: #e74c3c;
+  }
+  
+  .delete-button:hover {
+    background-color: #e74c3c;
+    color: white;
+  }
+  
+  .delete-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  
+  .delete-modal-content {
+    background-color: white;
+    border-radius: 8px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+  }
+  
+  .delete-modal-content h3 {
+    color: #e74c3c;
+    margin-bottom: 15px;
+  }
+  
+  .delete-modal-content p {
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  
+  .delete-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 15px;
+  }
+  
+  .cancel-button {
+    background-color: #95a5a6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .cancel-button:hover {
+    background-color: #7f8c8d;
+  }
+  
+  .confirm-delete-button {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .confirm-delete-button:hover {
+    background-color: #c0392b;
+  }
+  
+  .confirm-delete-button:disabled,
+  .cancel-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  
+  /* Responsive styles */
+  @media (max-width: 768px) {
+    .container {
+      padding: 0 10px;
+    }
+    
+    .tabs button {
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+    
+    .item-card {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 15px;
+    }
+    
+    .item-actions {
+      align-self: flex-end;
+      margin-left: 0;
+    }
+  }
